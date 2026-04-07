@@ -377,12 +377,13 @@
           <span class="step-num">4</span>
           <div>
             <strong><i class="fa-solid fa-location-dot"></i> Aggiungi i GCP (due clic per ogni punto)</strong>
-            <p>Clicca il pulsante <strong><i class="fa-solid fa-location-dot"></i> GCP</strong> nella toolbar (oppure premi il tasto <kbd>G</kbd>). Nella sidebar appare un'<strong>anteprima dell'immagine storica</strong>.</p>
-            <p>Per ogni punto di controllo servono <strong>due clic</strong>:</p>
+            <p>Clicca il pulsante <strong><i class="fa-solid fa-location-dot"></i> GCP</strong> nella toolbar (oppure premi il tasto <kbd>G</kbd>). Il cursore diventa un mirino sulla mappa.</p>
+            <p>Per ogni punto di controllo servono <strong>due clic direttamente sulla mappa</strong>:</p>
             <ul>
-              <li><strong>Clic 1 — sull'anteprima nella sidebar:</strong> clicca su un punto riconoscibile nell'anteprima dell'immagine (un incrocio, un edificio, un monumento). Appare un <span style="color:#f59e0b;font-weight:600">marker arancione</span> che conferma le coordinate pixel esatte.</li>
-              <li><strong>Clic 2 — sulla mappa di base:</strong> clicca sullo stesso punto nella cartografia moderna per associare le coordinate geografiche reali. Il GCP viene aggiunto.</li>
+              <li><strong>Clic 1 — sull'immagine storica:</strong> clicca su un punto riconoscibile dell'immagine sovrapposta (un incrocio, un edificio, un monumento). Appare un <span style="color:#f59e0b;font-weight:600">marker arancione</span> che conferma la selezione del pixel.</li>
+              <li><strong>Clic 2 — sulla mappa di base:</strong> clicca sullo stesso luogo nella cartografia moderna per associare le coordinate geografiche reali. Il GCP viene aggiunto e il marker diventa rosso numerato.</li>
             </ul>
+            <p><strong>Suggerimento:</strong> usa lo <strong>Swipe</strong> o lo <strong>Spotlight</strong> per vedere la mappa di base sotto l'immagine e cliccare con precisione al passo 2.</p>
             <p>Premi <kbd>Esc</kbd> per annullare il clic 1 in attesa senza uscire dalla modalità GCP. Aggiungi <strong>almeno 3 GCP</strong>, meglio se distribuiti agli angoli dell'area coperta dall'immagine.</p>
           </div>
         </li>
@@ -486,7 +487,8 @@
         <li><kbd>Canc</kbd> / <kbd>Backspace</kbd> — rimuove l'ultimo GCP aggiunto</li>
         <li><kbd>Ctrl+S</kbd> — salva il progetto in localStorage</li>
         <li>Il progetto viene <strong>salvato automaticamente</strong> nel browser: ricaricando la pagina trovi tutto dove l'hai lasciato.</li>
-        <li>Ogni GCP richiede <strong>due clic</strong>: prima sull'anteprima immagine nella sidebar (pixel esatto), poi sul punto reale sulla mappa (coordinate geografiche).</li>
+        <li>Ogni GCP richiede <strong>due clic sulla mappa</strong>: prima sull'immagine storica (pixel), poi sul punto reale nella cartografia di base (coordinate geografiche).</li>
+        <li>Usa <strong>Swipe</strong> o <strong>Spotlight</strong> durante l'inserimento GCP per vedere la mappa di base e cliccare con precisione al secondo clic.</li>
         <li>Più GCP aggiungi e più li distribuisci agli angoli dell'immagine, più precisa sarà la georeferenziazione.</li>
       </ul>
     </section>
