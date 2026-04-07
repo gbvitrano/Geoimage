@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geoimage — Georeferenziazione Mappe Storiche</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-distortableimage/dist/leaflet.distortableimage.css"/>
+  <link rel="icon" href="favicon.png" type="image/png"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <link rel="stylesheet" href="css/style.css"/>
+
+</head>
+<body>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <h1><i class="fa-solid fa-map-location-dot"></i> Geoimage</h1>
+  <div class="sep"></div>
+  <button class="btn active" id="btn-pan"    title="Modalità navigazione (Esc)"><i class="fa-solid fa-hand"></i> Pan</button>
+  <button class="btn"        id="btn-gcp"    title="Aggiungi GCP (G)"><i class="fa-solid fa-location-dot"></i> GCP</button>
+  <button class="btn danger" id="btn-clear"  title="Rimuovi tutti i GCP"><i class="fa-solid fa-trash"></i> GCP</button>
+  <div class="sep"></div>
+  <div class="slider-row">
+    <label>Opacità</label>
+    <input type="range" id="opacity-slider" min="0" max="100" value="70">
+    <span class="slider-val" id="opacity-val">70%</span>
+  </div>
+  <div style="flex:1"></div>
+  <span id="mode-badge" class="hidden">GCP</span>
+  <button class="btn" id="btn-help" title="Guida all'uso"><i class="fa-solid fa-circle-question"></i> Guida</button>
+  <button class="btn" id="btn-info" title="Informazioni sul progetto"><i class="fa-solid fa-circle-info"></i></button>
+</div>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────────── -->
+<div id="main">
+  <div id="map">
+    <div id="compare-cursor"></div>
+    <div id="swipe-divider" style="display:none">
+      <div class="swipe-handle"><i class="fa-solid fa-left-right"></i></div>
+    </div>
+    <a href="https://opendatasicilia.it/" title="opendatasicilia.it" id="map-logo" target="_blank" rel="noopener">
+      <img src="img/logo.png" alt="opendatasicilia.it">
+    </a>
+  </div>
+
+  <div id="sidebar">
+    <div id="sidebar-resizer" title="Trascina per ridimensionare"></div>
+
+    <!-- Geocoding search -->
+    <div class="panel">
+      <h3>Cerca posizione</h3>
+      <div class="search-row">
+        <input type="text" id="geocode-input" placeholder="Es: Palermo, Via Maqueda...">
+        <button class="btn" id="geocode-btn" title="Cerca (Invio)"><i class="fa-solid fa-magnifying-glass"></i></button>
+      </div>
+      <div id="geocode-results"></div>
+    </div>
+
+    <!-- Image load -->
+    <div class="panel">
+      <h3>Immagine storica</h3>
+      <div id="drop-zone">
+        <div class="drop-icon"><i class="fa-solid fa-folder-open"></i></div>
+        <div>Carica mappa storica</div>
+        <div class="drop-sub">JPG · PNG · WEBP · BMP — oppure trascina qui</div>
+      </div>
+      <input type="file" id="file-input" accept="image/*">
+      <div id="img-info"></div>
+      <button class="btn danger" id="btn-remove-img" style="width:100%;margin-top:7px;display:none">
+        <i class="fa-solid fa-trash"></i> Rimuovi immagine
+      </button>
+    </div>
+
+    <!-- Basemap -->
+    <div class="panel">
+      <h3>Mappa di base</h3>
+      <select id="basemap-select">
+        <option value="osm">OpenStreetMap Standard</option>
+        <option value="esri">Esri World Imagery</option>
+        <option value="carto-light">CartoDB Positron</option>
+        <option value="carto-dark">CartoDB Dark Matter</option>
+      </select>
+    </div>
+
+    <!-- Compare panel -->
+    <div class="panel" id="panel-compare">
+      <h3>Confronto visivo</h3>
+      <div style="display:flex;gap:5px;margin-bottom:6px">
+        <button class="btn" id="btn-swipe" style="flex:1" title="Linea scorrevole per confronto affiancato"><i class="fa-solid fa-left-right"></i> Swipe</button>
+        <button class="btn" id="btn-compare" style="flex:1" title="Cerchio spotlight sulla mappa"><i class="fa-solid fa-circle-half-stroke"></i> Spotlight</button>
+        <button class="btn" id="btn-compare-invert" title="Inverti: mostra immagine nel cerchio / basemap nel cerchio"><i class="fa-solid fa-arrows-left-right"></i></button>
+      </div>
+      <div class="slider-row">
+        <label style="color:#5a6e9a">Raggio</label>
+        <input type="range" id="compare-size" min="80" max="600" value="250">
+        <span class="slider-val" id="compare-size-val">250</span>
+      </div>
+    </div>
+
+    <!-- Positioning controls -->
+    <div class="panel" id="panel-pos">
+      <h3>Posiziona overlay <button id="btn-pos-toggle" class="panel-toggle" title="Comprimi/espandi"><i class="fa-solid fa-chevron-up"></i></button></h3>
+      <div id="pos-panel-body">
+        <div class="pos-grid">
+          <div></div>
+          <button class="btn pos-btn" id="pos-up"    title="Sposta su"><i class="fa-solid fa-arrow-up"></i></button>
+          <div></div>
+          <button class="btn pos-btn" id="pos-left"  title="Sposta sinistra"><i class="fa-solid fa-arrow-left"></i></button>
+          <button class="btn pos-btn pos-center" id="pos-fit" title="Zoom sull'overlay"><i class="fa-solid fa-crosshairs"></i></button>
+          <button class="btn pos-btn" id="pos-right" title="Sposta destra"><i class="fa-solid fa-arrow-right"></i></button>
+          <div></div>
+          <button class="btn pos-btn" id="pos-down"  title="Sposta giu"><i class="fa-solid fa-arrow-down"></i></button>
+          <div></div>
+        </div>
+        <div class="pos-row">
+          <button class="btn pos-btn" id="pos-rot-l"  title="Ruota -5°"><i class="fa-solid fa-rotate-left"></i> 5°</button>
+          <button class="btn pos-btn" id="pos-rot-r"  title="Ruota +5°"><i class="fa-solid fa-rotate-right"></i> 5°</button>
+          <button class="btn pos-btn" id="pos-scale-d" title="Rimpicciolisci 10%"><i class="fa-solid fa-minus"></i> 10%</button>
+          <button class="btn pos-btn" id="pos-scale-u" title="Ingrandisci 10%"><i class="fa-solid fa-plus"></i> 10%</button>
+        </div>
+        <div class="export-row-2" style="margin-top:7px">
+          <button class="btn danger" id="btn-reset-overlay" title="Riporta l'immagine alla posizione iniziale">
+            <i class="fa-solid fa-arrow-rotate-left"></i> Reset
+          </button>
+          <button class="btn" id="btn-lock-overlay" title="Blocca/sblocca le maniglie di posizionamento (L)">
+            <i class="fa-solid fa-lock-open"></i> Blocca (L)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GCP Image Preview (shown only in GCP mode) -->
+    <div class="panel" id="panel-gcp-preview" style="display:none">
+      <h3><i class="fa-solid fa-crosshairs"></i> Step 1 — Clicca sull'immagine</h3>
+      <div id="gcp-preview-wrap">
+        <canvas id="gcp-preview-canvas"></canvas>
+        <div id="gcp-preview-hint">Clicca sul punto da georeferenziare</div>
+      </div>
+    </div>
+
+    <!-- GCP list -->
+    <div class="panel" style="flex:1; min-height:0;">
+      <h3>Ground Control Points</h3>
+      <div id="gcp-count">Nessun GCP inserito</div>
+      <div id="gcp-table-wrap">
+        <table id="gcp-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Lat</th><th>Lon</th><th>Px</th><th>Py</th><th>Res(m)</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="gcp-tbody"></tbody>
+        </table>
+      </div>
+      <div id="rmse-row" style="display:none">
+        RMSE: <span id="rmse-val">—</span> m
+      </div>
+      <div class="transform-row">
+        <label>Trasformazione</label>
+        <select id="transform-type">
+          <option value="poly1">Polinomiale 1 — affine (≥3 GCP)</option>
+          <option value="poly2">Polinomiale 2 (≥6 GCP)</option>
+        </select>
+      </div>
+      <button class="btn primary" id="btn-apply-gcp" disabled style="width:100%;margin-top:6px">
+        <i class="fa-solid fa-location-crosshairs"></i> Allinea immagine ai GCP
+      </button>
+    </div>
+
+    <!-- Export -->
+    <div class="panel">
+      <h3>Export</h3>
+      <div class="export-btns">
+        <div class="export-row-2">
+          <button class="btn primary" id="btn-kml"     disabled><i class="fa-solid fa-floppy-disk"></i> KMZ</button>
+          <button class="btn primary" id="btn-geotiff" disabled><i class="fa-solid fa-map"></i> GeoTIFF</button>
+        </div>
+        <button class="btn primary" id="btn-qgis" disabled><i class="fa-solid fa-ruler-combined"></i> GCP per QGIS (.points)</button>
+        <div class="export-row-2">
+          <button class="btn" id="btn-worldfile" disabled><i class="fa-solid fa-earth-europe"></i> World file</button>
+          <button class="btn" id="btn-geojson"   disabled><i class="fa-solid fa-map-pin"></i> GCP GeoJSON</button>
+        </div>
+        <div style="height:3px"></div>
+        <div class="export-row-2">
+          <button class="btn" id="btn-save-json"><i class="fa-solid fa-box-archive"></i> Esporta JSON</button>
+          <button class="btn" id="btn-load-json"><i class="fa-solid fa-folder-open"></i> Importa JSON</button>
+        </div>
+        <input type="file" id="json-input" accept=".json">
+        <a href="https://mapwarper.net/" target="_blank" rel="noopener"
+           class="btn btn-mapwarper"
+           title="Per georeferenziazioni e rettifiche più precise ti consigliamo di usare mapwarper.net">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> MapWarper
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /sidebar -->
+</div><!-- /main -->
+
+<!-- ── Status bar ─────────────────────────────────────────────────────────── -->
+<div id="status-bar">
+  <span id="cursor-coords">Lat: — , Lon: —</span>
+  <span id="status-msg">Carica un'immagine storica per iniziare</span>
+</div>
+
+<!-- ── GeoTIFF Export Settings Dialog ──────────────────────────────────── -->
+<div id="gtiff-dialog-overlay" class="dialog-overlay"></div>
+<div id="gtiff-dialog" class="dialog-box" role="dialog" aria-modal="true" aria-label="Impostazioni GeoTIFF" style="display:none">
+  <div class="dialog-header">
+    <span><i class="fa-solid fa-map"></i> Impostazioni esportazione GeoTIFF</span>
+    <button id="btn-gtiff-close" class="guide-close" title="Chiudi"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="dialog-body">
+    <div class="dialog-group">
+      <label class="dialog-label">SR di destinazione</label>
+      <select id="gtiff-crs" class="dialog-select">
+        <option value="4326">EPSG:4326 — WGS 84 (geografico)</option>
+        <option value="32632">EPSG:32632 — WGS 84 / UTM zone 32N</option>
+        <option value="32633">EPSG:32633 — WGS 84 / UTM zone 33N</option>
+        <option value="3857">EPSG:3857 — WGS 84 / Pseudo-Mercator</option>
+      </select>
+    </div>
+    <div class="dialog-group" id="gtiff-resample-group">
+      <label class="dialog-label">Metodo di ricampionamento</label>
+      <select id="gtiff-resample" class="dialog-select">
+        <option value="bilinear">Bilineare (Kernel 2×2)</option>
+        <option value="nearest">Vicino più Prossimo</option>
+      </select>
+    </div>
+    <div class="dialog-group">
+      <label class="dialog-label">Risoluzione massima (lato lungo)</label>
+      <select id="gtiff-maxres" class="dialog-select">
+        <option value="2000">2000 px</option>
+        <option value="4000" selected>4000 px</option>
+        <option value="8000">8000 px</option>
+      </select>
+    </div>
+    <div class="dialog-group">
+      <label class="dialog-label">Compressione</label>
+      <select id="gtiff-compression" class="dialog-select">
+        <option value="5" selected>LZW (raccomandata)</option>
+        <option value="1">Nessuna</option>
+      </select>
+    </div>
+    <div id="gtiff-note" class="dialog-note">
+      <i class="fa-solid fa-circle-info"></i>
+      <span id="gtiff-note-text"></span>
+    </div>
+  </div>
+  <div class="dialog-footer">
+    <button class="btn" id="btn-gtiff-cancel">Annulla</button>
+    <button class="btn primary" id="btn-gtiff-export">
+      <i class="fa-solid fa-file-export"></i> Esporta GeoTIFF
+    </button>
+  </div>
+</div>
+
+<!-- ── Info modale ───────────────────────────────────────────────────────── -->
+<div id="info-overlay" class="guide-overlay" aria-hidden="true"></div>
+<div id="info-modal" class="guide-modal info-modal" role="dialog" aria-modal="true" aria-label="Informazioni">
+
+  <div class="guide-header">
+    <span><i class="fa-solid fa-circle-info"></i> Informazioni</span>
+    <button id="btn-info-close" class="guide-close" title="Chiudi"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="guide-body">
+
+    <section class="guide-section info-credits">
+      <div class="info-logo-row">
+        <a href="https://opendatasicilia.it/" target="_blank" rel="noopener" title="opendatasicilia.it">
+          <img src="img/logo.png" alt="OpenDataSicilia" class="info-logo">
+        </a>
+      </div>
+      <h2><i class="fa-solid fa-code"></i> Sviluppo tecnico</h2>
+      <p>Web app progettata e sviluppata da <a href="https://github.com/gbvitrano" target="_blank" rel="noopener"><strong>@gbvitrano</strong></a> in collaborazione con <strong>Claude AI (Anthropic)</strong>, che ha affiancato le scelte architetturali, l'ottimizzazione del codice e lo sviluppo delle funzionalità di visualizzazione geospaziale.</p>
+    </section>
+
+    <section class="guide-section info-stack">
+      <h2><i class="fa-solid fa-layer-group"></i> Tecnologie utilizzate</h2>
+      <ul>
+        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet.js 1.9.4</a> — mappa interattiva</li>
+        <li><a href="https://github.com/publiclab/Leaflet.DistortableImage" target="_blank" rel="noopener">Leaflet.DistortableImage</a> — overlay distorcibile con maniglie di distorsione</li>
+        <li><a href="https://proj4js.org/" target="_blank" rel="noopener">proj4.js 2.11.0</a> — riproiezione coordinate (UTM, WGS 84, ecc.)</li>
+        <li><a href="https://stuk.github.io/jszip/" target="_blank" rel="noopener">JSZip 3.10.1</a> — generazione file KMZ / ZIP lato client</li>
+        <li><a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim / OpenStreetMap</a> — geocoding</li>
+        <li><a href="https://fontawesome.com/" target="_blank" rel="noopener">Font Awesome 6.5.2</a> — icone vettoriali</li>
+        <li><a href="https://www.anthropic.com/" target="_blank" rel="noopener">Claude AI — Anthropic</a> — assistenza allo sviluppo</li>
+      </ul>
+    </section>
+
+  </div>
+</div>
+
+<!-- ── Guida modale ──────────────────────────────────────────────────────── -->
+<div id="guide-overlay" class="guide-overlay" aria-hidden="true"></div>
+<div id="guide-modal" class="guide-modal" role="dialog" aria-modal="true" aria-label="Guida">
+
+  <div class="guide-header">
+    <span><i class="fa-solid fa-circle-question"></i> Guida rapida — Geoimage</span>
+    <button id="btn-guide-close" class="guide-close" title="Chiudi"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="guide-body">
+
+    <section class="guide-section">
+      <h2><i class="fa-solid fa-map-location-dot"></i> Cos'è Geoimage?</h2>
+      <p>Geoimage ti permette di sovrapporre una <strong>mappa storica</strong> (o qualsiasi immagine) alla cartografia moderna e di georeferenziarla, cioè associarle delle coordinate geografiche reali tramite i <strong>Ground Control Points (GCP)</strong>.</p>
+    </section>
+
+    <section class="guide-section">
+      <h2><i class="fa-solid fa-list-ol"></i> Come georeferenziare un'immagine</h2>
+      <ol class="guide-steps">
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <strong><i class="fa-solid fa-magnifying-glass"></i> Cerca la posizione</strong>
+            <p>Usa la barra <em>Cerca posizione</em> nella sidebar per centrare la mappa sulla zona di interesse (es. <em>"Palermo"</em> oppure <em>"Via Maqueda, Palermo"</em>). Clicca sul risultato per zoomare sull'area.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <strong><i class="fa-solid fa-folder-open"></i> Carica la mappa storica</strong>
+            <p>Trascina il file immagine (JPG, PNG, WEBP, BMP) nel riquadro <em>Immagine storica</em>, oppure clicca sul riquadro per aprire il selettore file. L'immagine apparirà subito sulla mappa con le maniglie di posizionamento.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <strong><i class="fa-solid fa-up-down-left-right"></i> Posiziona e orienta l'immagine</strong>
+            <p>Usa le maniglie interattive direttamente sulla mappa:</p>
+            <ul>
+              <li><strong>Cerchio blu <i class="fa-solid fa-up-down-left-right"></i></strong> — trascina per spostare l'intera immagine</li>
+              <li><strong>Quadratini bianchi agli angoli</strong> — trascina per ridimensionare o distorcere</li>
+              <li><strong>Cerchio arancione <i class="fa-solid fa-rotate-right"></i></strong> — trascina per ruotare</li>
+            </ul>
+            <p>Puoi anche usare i pulsanti del pannello <em>Posiziona overlay</em> per spostamenti, rotazioni e scala precisi.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <div>
+            <strong><i class="fa-solid fa-location-dot"></i> Aggiungi i GCP (due clic per ogni punto)</strong>
+            <p>Clicca il pulsante <strong><i class="fa-solid fa-location-dot"></i> GCP</strong> nella toolbar (oppure premi il tasto <kbd>G</kbd>). Nella sidebar appare un'<strong>anteprima dell'immagine storica</strong>.</p>
+            <p>Per ogni punto di controllo servono <strong>due clic</strong>:</p>
+            <ul>
+              <li><strong>Clic 1 — sull'anteprima nella sidebar:</strong> clicca su un punto riconoscibile nell'anteprima dell'immagine (un incrocio, un edificio, un monumento). Appare un <span style="color:#f59e0b;font-weight:600">marker arancione</span> che conferma le coordinate pixel esatte.</li>
+              <li><strong>Clic 2 — sulla mappa di base:</strong> clicca sullo stesso punto nella cartografia moderna per associare le coordinate geografiche reali. Il GCP viene aggiunto.</li>
+            </ul>
+            <p>Premi <kbd>Esc</kbd> per annullare il clic 1 in attesa senza uscire dalla modalità GCP. Aggiungi <strong>almeno 3 GCP</strong>, meglio se distribuiti agli angoli dell'area coperta dall'immagine.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">5</span>
+          <div>
+            <strong><i class="fa-solid fa-location-crosshairs"></i> Allinea l'immagine ai GCP</strong>
+            <p>Con 3 o più GCP si abilita il pulsante <strong>Allinea immagine ai GCP</strong> nella sezione Ground Control Points. Cliccandolo, l'app calcola la trasformazione affine e <strong>sposta automaticamente l'overlay</strong> nelle coordinate geografiche corrette. Puoi ripetere l'operazione aggiungendo altri GCP per affinare la precisione.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">6</span>
+          <div>
+            <strong><i class="fa-solid fa-chart-line"></i> Controlla l'errore RMSE</strong>
+            <p>Dopo il terzo GCP appare il valore <strong>RMSE</strong> (Root Mean Square Error) espresso in metri. Indica la precisione media della georeferenziazione: più è basso, meglio è. Se il valore è alto, prova a riposizionare i GCP meno precisi o ad aggiungerne altri.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">7</span>
+          <div>
+            <strong><i class="fa-solid fa-floppy-disk"></i> Esporta il risultato</strong>
+            <p>Dal pannello <em>Export</em> puoi scaricare:</p>
+            <ul>
+              <li><strong>KML</strong> — per Google Earth e altri GIS</li>
+              <li><strong>GeoTIFF</strong> — immagine raster con coordinate incorporate, pronta per QGIS o ArcGIS</li>
+              <li><strong>.points</strong> — file GCP per il Georeferenziatore di QGIS</li>
+              <li><strong>JSON</strong> — salva e ricarica l'intero progetto in seguito</li>
+            </ul>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="guide-section">
+      <h2><i class="fa-solid fa-left-right"></i> Come usare lo Swipe</h2>
+      <p>Lo swipe divide la mappa in due metà con una linea verticale scorrevole: a sinistra vedi l'immagine storica sovrapposta, a destra la sola cartografia di base.</p>
+      <ol class="guide-steps">
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <strong>Attiva lo swipe</strong>
+            <p>Nel pannello <em>Confronto visivo</em> clicca il pulsante <strong><i class="fa-solid fa-left-right"></i> Swipe</strong>. Sulla mappa compare la linea divisoria verticale con la maniglia centrale <i class="fa-solid fa-left-right"></i>.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <strong>Trascina la linea</strong>
+            <p>Clicca e trascina la maniglia della linea per spostare il punto di divisione a piacere. Puoi spostare la linea in qualsiasi posizione tra il 2&nbsp;% e il 98&nbsp;% della larghezza della mappa.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <strong>Naviga normalmente</strong>
+            <p>Con lo swipe attivo puoi ancora fare pan e zoom sulla mappa: la linea rimane ferma mentre la mappa si sposta, e la divisione si aggiorna in tempo reale. Per spostare la mappa tieni il cursore <em>al di fuori</em> della maniglia.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <div>
+            <strong>Disattiva lo swipe</strong>
+            <p>Clicca di nuovo il pulsante <strong><i class="fa-solid fa-left-right"></i> Swipe</strong> per tornare alla visualizzazione normale. Lo swipe e lo spotlight si escludono a vicenda: attivarne uno disattiva automaticamente l'altro.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="guide-section">
+      <h2><i class="fa-solid fa-circle-half-stroke"></i> Come usare lo Spotlight</h2>
+      <p>Lo spotlight è uno strumento di confronto visivo che ti aiuta a calibrare meglio la posizione dell'immagine storica rispetto alla cartografia moderna.</p>
+      <ol class="guide-steps">
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <strong>Attiva lo spotlight</strong>
+            <p>Nel pannello <em>Confronto spotlight</em> clicca il pulsante <strong><i class="fa-solid fa-circle-half-stroke"></i> Attiva spotlight</strong>. Muovi il mouse sulla mappa: un cerchio rivela la cartografia di base nascosta sotto l'immagine storica.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <strong>Regola il raggio</strong>
+            <p>Usa il cursore <em>Raggio</em> per ingrandire o ridurre il cerchio dello spotlight.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <strong>Inverti l'effetto</strong>
+            <p>Il pulsante <strong><i class="fa-solid fa-arrows-left-right"></i></strong> inverte la logica: invece di mostrare la basemap nel cerchio, mostra <em>solo l'immagine storica</em> all'interno del cerchio e nasconde tutto il resto.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="guide-section guide-tips">
+      <h2><i class="fa-solid fa-lightbulb"></i> Suggerimenti</h2>
+      <ul>
+        <li><kbd>G</kbd> — attiva modalità GCP &nbsp;|&nbsp; <kbd>Esc</kbd> — annulla clic 1 in attesa, o torna alla navigazione</li>
+        <li><kbd>Canc</kbd> / <kbd>Backspace</kbd> — rimuove l'ultimo GCP aggiunto</li>
+        <li><kbd>Ctrl+S</kbd> — salva il progetto in localStorage</li>
+        <li>Il progetto viene <strong>salvato automaticamente</strong> nel browser: ricaricando la pagina trovi tutto dove l'hai lasciato.</li>
+        <li>Ogni GCP richiede <strong>due clic</strong>: prima sull'anteprima immagine nella sidebar (pixel esatto), poi sul punto reale sulla mappa (coordinate geografiche).</li>
+        <li>Più GCP aggiungi e più li distribuisci agli angoli dell'immagine, più precisa sarà la georeferenziazione.</li>
+      </ul>
+    </section>
+
+    <section class="guide-section guide-mapwarper">
+      <h2><i class="fa-solid fa-arrow-up-right-from-square"></i> Vuoi più precisione?</h2>
+      <p>Per georeferenziazioni e rettifiche più precise, con supporto a trasformazioni polinomiali avanzate e collaborazione online, ti consigliamo di usare <strong>MapWarper</strong>:</p>
+      <a href="https://mapwarper.net/" target="_blank" rel="noopener" class="guide-mapwarper-link">
+        <i class="fa-solid fa-map"></i> Vai su mapwarper.net <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px"></i>
+      </a>
+    </section>
+
+  </div><!-- /guide-body -->
+</div><!-- /guide-modal -->
+
+<!-- ── CDN libraries ─────────────────────────────────────────────────────── -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-distortableimage/dist/leaflet.distortableimage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+
+<script src="js/app.js"></script>
+</body>
+</html>
