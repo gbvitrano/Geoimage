@@ -14,7 +14,7 @@ body {
 #toolbar {
   background: #ffffff;
   color: #1e293b;
-  padding: 7px 14px;
+  padding: 7px 80px 7px 14px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -27,7 +27,7 @@ body {
 #toolbar h1 {
   font-size: 15px;
   font-weight: 700;
-  color: #2563eb;
+  color: #ff9900;
   letter-spacing: 0.4px;
   margin-right: 10px;
   white-space: nowrap;
