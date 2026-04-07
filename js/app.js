@@ -215,7 +215,7 @@ function setModeGcp() {
   hideEditHandles();
   document.getElementById('panel-gcp-preview').style.display = 'block';
   drawPreviewCanvas();
-  setStatus('GCP — Step 1: clicca sull\'anteprima immagine nella sidebar per selezionare il punto.');
+  setStatus('GCP — Step 1: clicca sull\'immagine storica sulla mappa per selezionare il punto.');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -489,29 +489,48 @@ function geoToPixel(lat, lng) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAP CLICK — ADD GCP  (two-step: image click → map click)
+   MAP CLICK — ADD GCP  (two-step: image overlay click → base map click)
    ═══════════════════════════════════════════════════════════════════════════ */
-let pendingGcp = null; // { px, py } — waiting for step-2 map click
+let pendingGcp = null;        // { px, py } — waiting for step-2 map click
+let pendingGcpMarker = null;  // temporary marker shown during step 1 → 2
 
 function cancelPendingGcp() {
   if (pendingGcp) {
     pendingGcp = null;
-    drawPreviewCanvas(); // remove pending marker from canvas
+    if (pendingGcpMarker) { map.removeLayer(pendingGcpMarker); pendingGcpMarker = null; }
+    drawPreviewCanvas();
   }
 }
 
 map.on('click', e => {
   if (state.mode !== 'gcp' || !state.overlay) return;
+
   if (!pendingGcp) {
-    setStatus('Step 1: clicca prima sull\'anteprima immagine nella sidebar per selezionare il pixel.');
+    // ── Step 1: click on the image overlay → compute pixel coords ──────
+    const { lat, lng } = e.latlng;
+    const result = geoToPixel(lat, lng);
+    if (!result.valid) {
+      setStatus('Step 1: clicca sull\'immagine storica sulla mappa per selezionare il punto.');
+      return;
+    }
+    pendingGcp = { px: result.px, py: result.py };
+    // show a temporary crosshair marker at the clicked overlay position
+    if (pendingGcpMarker) map.removeLayer(pendingGcpMarker);
+    pendingGcpMarker = L.circleMarker([lat, lng], {
+      radius: 8, color: '#f59e0b', weight: 2.5, fillColor: 'rgba(245,158,11,0.6)', fillOpacity: 1
+    }).addTo(map);
+    drawPreviewCanvas();
+    setStatus(`Pixel (${result.px}, ${result.py}) selezionato — Step 2: clicca sulla mappa base nel punto reale corrispondente. Esc per annullare.`);
     return;
   }
-  // ── Step 2: click on the map to get the true geo coords ─────────
+
+  // ── Step 2: click anywhere on the map → real-world coords ───────────
   const { lat, lng } = e.latlng;
+  if (pendingGcpMarker) { map.removeLayer(pendingGcpMarker); pendingGcpMarker = null; }
   addGcp(lat, lng, pendingGcp.px, pendingGcp.py);
   pendingGcp = null;
   drawPreviewCanvas();
-  setStatus(`GCP ${state.gcps.length} aggiunto. Step 1: clicca sull\'anteprima per il prossimo punto, Esc per uscire.`);
+  setStatus(`GCP ${state.gcps.length} aggiunto. Step 1: clicca sull\'immagine per il prossimo punto, Esc per uscire.`);
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -570,17 +589,7 @@ function drawPreviewCanvas() {
   img.src = state.image.dataUrl;
 }
 
-// ── Canvas click = Step 1 (pixel capture) ────────────────────────────────────
-document.getElementById('gcp-preview-canvas').addEventListener('click', e => {
-  if (state.mode !== 'gcp' || !state.image) return;
-  const canvas = e.currentTarget;
-  const rect   = canvas.getBoundingClientRect();
-  const px = Math.round((e.clientX - rect.left) * (canvas.width  / rect.width));
-  const py = Math.round((e.clientY - rect.top)  * (canvas.height / rect.height));
-  pendingGcp = { px, py };
-  drawPreviewCanvas();
-  setStatus(`Pixel (${px}, ${py}) selezionato — Step 2: clicca sulla mappa nel punto reale corrispondente. Esc per annullare.`);
-});
+// ── Canvas — display only, no click interaction ───────────────────────────────
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GCP MANAGEMENT

@@ -113,6 +113,7 @@ input[type=range] { width: 90px; accent-color: var(--primary-color); cursor: poi
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
   box-shadow: -1px 0 4px rgba(0,0,0,.04);
   position: relative;
 }
