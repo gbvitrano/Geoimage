@@ -61,16 +61,10 @@ function redoOverlay(steps = 1) {
 }
 
 function _updateUndoRedoBtns() {
-  const canUndo = overlayHistoryIdx > 0;
-  const canRedo = overlayHistoryIdx < overlayHistory.length - 1;
-  const u   = document.getElementById('btn-undo');
-  const r   = document.getElementById('btn-redo');
-  const u10 = document.getElementById('btn-undo10');
-  const r10 = document.getElementById('btn-redo10');
-  if (u)   u.disabled   = !canUndo;
-  if (r)   r.disabled   = !canRedo;
-  if (u10) u10.disabled = !canUndo;
-  if (r10) r10.disabled = !canRedo;
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) u.disabled = overlayHistoryIdx <= 0;
+  if (r) r.disabled = overlayHistoryIdx >= overlayHistory.length - 1;
 }
 
 function clearHistory() {
@@ -246,10 +240,8 @@ const modeBadge = document.getElementById('mode-badge');
 
 btnPan.addEventListener('click', setModePan);
 btnGcp.addEventListener('click', setModeGcp);
-document.getElementById('btn-undo').addEventListener('click',   () => undoOverlay(1));
-document.getElementById('btn-redo').addEventListener('click',   () => redoOverlay(1));
-document.getElementById('btn-undo10').addEventListener('click', () => undoOverlay(10));
-document.getElementById('btn-redo10').addEventListener('click', () => redoOverlay(10));
+document.getElementById('btn-undo').addEventListener('click', e => undoOverlay(e.shiftKey ? 10 : 1));
+document.getElementById('btn-redo').addEventListener('click', e => redoOverlay(e.shiftKey ? 10 : 1));
 document.getElementById('btn-clear').addEventListener('click', clearGcps);
 
 document.addEventListener('keydown', e => {
