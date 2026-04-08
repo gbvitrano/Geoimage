@@ -14,6 +14,70 @@ const state = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   UNDO / REDO  (cronologia posizioni overlay)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const HISTORY_MAX = 50;
+let overlayHistory    = [];    // array di snapshot: [{lat,lng}×4]
+let overlayHistoryIdx = -1;    // indice corrente
+let _isRestoring      = false; // guard: impedisce pushHistory durante un restore
+
+function pushHistory() {
+  if (_isRestoring) return;    // ← evita che la ricostruzione degli handle azzeri il redo
+  if (!state.overlay) return;
+  const c = getOverlayCorners();
+  if (!c) return;
+  // Elimina gli stati "futuri" (redo invalidato da nuova azione)
+  overlayHistory = overlayHistory.slice(0, overlayHistoryIdx + 1);
+  overlayHistory.push(c.map(p => ({ lat: p.lat, lng: p.lng })));
+  if (overlayHistory.length > HISTORY_MAX) overlayHistory.shift();
+  overlayHistoryIdx = overlayHistory.length - 1;
+  _updateUndoRedoBtns();
+}
+
+function _restoreHistory(snap) {
+  _isRestoring = true;
+  try {
+    setOverlayCorners(snap.map(p => L.latLng(p.lat, p.lng)));
+    updateHandlePositions();
+  } finally {
+    _isRestoring = false; // garantito anche in caso di eccezione
+  }
+  saveToLocalStorage();
+  _updateUndoRedoBtns();
+}
+
+function undoOverlay(steps = 1) {
+  if (overlayHistoryIdx <= 0) return;
+  overlayHistoryIdx = Math.max(0, overlayHistoryIdx - steps);
+  _restoreHistory(overlayHistory[overlayHistoryIdx]);
+  setStatus('Annullato — passo ' + overlayHistoryIdx + '/' + (overlayHistory.length - 1) + '.');
+}
+
+function redoOverlay(steps = 1) {
+  if (overlayHistoryIdx >= overlayHistory.length - 1) return;
+  overlayHistoryIdx = Math.min(overlayHistory.length - 1, overlayHistoryIdx + steps);
+  _restoreHistory(overlayHistory[overlayHistoryIdx]);
+  setStatus('Ripristinato — passo ' + overlayHistoryIdx + '/' + (overlayHistory.length - 1) + '.');
+}
+
+function _updateUndoRedoBtns() {
+  const canUndo = overlayHistoryIdx > 0;
+  const canRedo = overlayHistoryIdx < overlayHistory.length - 1;
+  const u   = document.getElementById('btn-undo');
+  const r   = document.getElementById('btn-redo');
+  const u10 = document.getElementById('btn-undo10');
+  const r10 = document.getElementById('btn-redo10');
+  if (u)   u.disabled   = !canUndo;
+  if (r)   r.disabled   = !canRedo;
+  if (u10) u10.disabled = !canUndo;
+  if (r10) r10.disabled = !canRedo;
+}
+
+function clearHistory() {
+  overlayHistory = []; overlayHistoryIdx = -1; _updateUndoRedoBtns();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAP + BASEMAPS
    ═══════════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', { center: [41.9, 12.5], zoom: 6, zoomControl: true });
@@ -163,9 +227,11 @@ function placeOverlay(dataUrl) {
   }
 
   // Zoom to overlay and show handles
+  overlayHandleMode = 'scale'; // reimposta sempre in modalità scala al caricamento
+  clearHistory();              // nuova immagine = cronologia azzerata
   map.fitBounds(L.latLngBounds(corners), { padding: [30, 30], maxZoom: 16 });
   // showEditHandles() needs the overlay to be in the DOM first
-  setTimeout(showEditHandles, 150);
+  setTimeout(() => { showEditHandles(); attachOverlayClickToggle(); pushHistory(); }, 150);
 
   showPosPanel(true);
   updateExportButtons();
@@ -180,6 +246,10 @@ const modeBadge = document.getElementById('mode-badge');
 
 btnPan.addEventListener('click', setModePan);
 btnGcp.addEventListener('click', setModeGcp);
+document.getElementById('btn-undo').addEventListener('click',   () => undoOverlay(1));
+document.getElementById('btn-redo').addEventListener('click',   () => redoOverlay(1));
+document.getElementById('btn-undo10').addEventListener('click', () => undoOverlay(10));
+document.getElementById('btn-redo10').addEventListener('click', () => redoOverlay(10));
 document.getElementById('btn-clear').addEventListener('click', clearGcps);
 
 document.addEventListener('keydown', e => {
@@ -193,6 +263,10 @@ document.addEventListener('keydown', e => {
     if (state.gcps.length) removeGcp(state.gcps.length - 1);
   }
   if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveToLocalStorage(); }
+  if (e.ctrlKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoOverlay(1); }
+  if (e.ctrlKey && e.key === 'Z' &&  e.shiftKey) { e.preventDefault(); undoOverlay(10); }
+  if (e.ctrlKey && e.key === 'y' && !e.shiftKey) { e.preventDefault(); redoOverlay(1); }
+  if (e.ctrlKey && e.key === 'Y' &&  e.shiftKey) { e.preventDefault(); redoOverlay(10); }
 });
 
 function setModePan() {
@@ -203,7 +277,7 @@ function setModePan() {
   cancelPendingGcp();
   document.getElementById('panel-gcp-preview').style.display = 'none';
   showEditHandles();
-  setStatus('Pan: trascina ✥ per spostare · angoli bianchi per ridimensionare/distorcere · arancio ↻ per ruotare.');
+  setStatus('Pan: trascina ✥ per spostare · 1° clic immagine = SCALA (↖↘) · 2° clic = DEFORMA (◇) · arancio ↻ per ruotare.');
 }
 
 function setModeGcp() {
@@ -225,7 +299,12 @@ function setModeGcp() {
 function setOverlayCorners(corners) {
   if (!state.overlay) return;
   if (state.overlayType === 'distortable') {
-    state.overlay.setCorners(corners);
+    try {
+      state.overlay.setCorners(corners);
+    } catch (_) {
+      // DistortableImage lancia errori interni sulla toolbar anche se le coordinate
+      // vengono comunque aggiornate correttamente — ignoriamo l'eccezione.
+    }
   } else {
     state.overlay.setBounds(L.latLngBounds(
       [Math.min(...corners.map(c => c.lat)), Math.min(...corners.map(c => c.lng))],
@@ -278,14 +357,14 @@ function scaleOverlay(factor) {
 }
 
 // Wire up positioning buttons (buttons also update handles and save)
-document.getElementById('pos-up').addEventListener('click',     () => { moveOverlay( nudgeStep(), 0); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-down').addEventListener('click',   () => { moveOverlay(-nudgeStep(), 0); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-left').addEventListener('click',   () => { moveOverlay(0, -nudgeStep()); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-right').addEventListener('click',  () => { moveOverlay(0,  nudgeStep()); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-rot-l').addEventListener('click',  () => { rotateOverlay(-5); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-rot-r').addEventListener('click',  () => { rotateOverlay( 5); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-scale-d').addEventListener('click',() => { scaleOverlay(0.9); updateHandlePositions(); saveToLocalStorage(); });
-document.getElementById('pos-scale-u').addEventListener('click',() => { scaleOverlay(1.1); updateHandlePositions(); saveToLocalStorage(); });
+document.getElementById('pos-up').addEventListener('click',     () => { moveOverlay( nudgeStep(), 0); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-down').addEventListener('click',   () => { moveOverlay(-nudgeStep(), 0); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-left').addEventListener('click',   () => { moveOverlay(0, -nudgeStep()); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-right').addEventListener('click',  () => { moveOverlay(0,  nudgeStep()); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-rot-l').addEventListener('click',  () => { rotateOverlay(-5); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-rot-r').addEventListener('click',  () => { rotateOverlay( 5); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-scale-d').addEventListener('click',() => { scaleOverlay(0.9); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
+document.getElementById('pos-scale-u').addEventListener('click',() => { scaleOverlay(1.1); updateHandlePositions(); pushHistory(); saveToLocalStorage(); });
 document.getElementById('pos-fit').addEventListener('click', () => {
   const c = getOverlayCorners();
   if (c) map.fitBounds(L.latLngBounds(c), { padding: [30, 30], maxZoom: 17 });
@@ -299,6 +378,8 @@ function showPosPanel(visible) {
    INTERACTIVE OVERLAY HANDLES  (drag to move / resize / rotate)
    ═══════════════════════════════════════════════════════════════════════════ */
 const eh = { corners: [null,null,null,null], center: null, rotate: null };
+// 'scale' = 1° click (ridimensiona proporzionalmente), 'distort' = 2° click (deforma libera)
+let overlayHandleMode = 'scale';
 
 function rotHandlePos() {
   const c = getOverlayCorners(), ctr = overlayCenter();
@@ -318,23 +399,79 @@ function showEditHandles() {
   const corners = getOverlayCorners();
 
   // ── 4 corner handles ────────────────────────────────────────────────
+  // Rotazione freccia diagonale per la modalità scala: ogni angolo punta verso l'esterno
+  // fa-arrows-left-right ruotato: NW=-45°(↖↘), NE=+45°(↗↙), SW=+45°(↗↙), SE=-45°(↖↘)
+  const _scaleArrowRot = [-45, 45, 45, -45];
+  // Cursore CSS per modalità scala: NW/SE = nwse-resize, NE/SW = nesw-resize
+  const _scaleCursor   = ['nwse-resize', 'nesw-resize', 'nesw-resize', 'nwse-resize'];
+
   corners.forEach((c, i) => {
+    const isScale = overlayHandleMode === 'scale';
+
+    const iconHtml = isScale
+      ? `<div class="eh-corner-scale" style="cursor:${_scaleCursor[i]}"><i class="fa-solid fa-arrows-left-right" style="transform:rotate(${_scaleArrowRot[i]}deg);pointer-events:none"></i></div>`
+      : `<div class="eh-corner-distort" style="cursor:move"></div>`;
+    const iSize  = isScale ? [17, 17] : [13, 13];
+    const iAnchor = isScale ? [8, 8]  : [6, 6];
+
     const m = L.marker(c, {
-      icon: L.divIcon({ className:'', html:'<div class="eh-corner"></div>',
-                        iconSize:[13,13], iconAnchor:[6,6] }),
+      icon: L.divIcon({ className:'', html: iconHtml, iconSize: iSize, iconAnchor: iAnchor }),
       draggable: true, zIndexOffset: 2000,
     }).addTo(map);
 
-    m.on('drag', e => {
-      const cur = getOverlayCorners();
-      cur[i] = e.latlng;
-      setOverlayCorners(cur);
-      // refresh other handles (not self — Leaflet is moving it)
-      eh.corners.forEach((hm, j) => { if (j !== i && hm) hm.setLatLng(getOverlayCorners()[j]); });
-      if (eh.center) eh.center.setLatLng(overlayCenter());
-      if (eh.rotate) eh.rotate.setLatLng(rotHandlePos());
-    });
-    m.on('dragend', saveToLocalStorage);
+    if (isScale) {
+      // ── Modalità SCALA: ridimensiona proporzionalmente dall'angolo opposto ──
+      let _startCorners = null, _anchor = null, _d0lat = null, _d0lng = null;
+
+      m.on('dragstart', () => {
+        _startCorners = getOverlayCorners().map(c => L.latLng(c.lat, c.lng));
+        _anchor = L.latLng(_startCorners[3 - i].lat, _startCorners[3 - i].lng);
+        const latR = Math.cos(_anchor.lat * Math.PI / 180);
+        _d0lat = _startCorners[i].lat - _anchor.lat;
+        _d0lng = (_startCorners[i].lng - _anchor.lng) * latR;
+      });
+
+      m.on('drag', e => {
+        if (!_startCorners) return;
+        const latR  = Math.cos(_anchor.lat * Math.PI / 180);
+        const d1lat = e.latlng.lat - _anchor.lat;
+        const d1lng = (e.latlng.lng - _anchor.lng) * latR;
+        const dot00 = _d0lat * _d0lat + _d0lng * _d0lng;
+        if (dot00 === 0) return;
+        const scale = (d1lat * _d0lat + d1lng * _d0lng) / dot00;
+        const nc = _startCorners.map(c => L.latLng(
+          _anchor.lat + (c.lat - _anchor.lat) * scale,
+          _anchor.lng + (c.lng - _anchor.lng) * scale
+        ));
+        setOverlayCorners(nc);
+        // Usa nc direttamente: più affidabile che ri-leggere dall'overlay
+        eh.corners.forEach((hm, j) => { if (j !== i && hm) hm.setLatLng(nc[j]); });
+        if (eh.center) eh.center.setLatLng(overlayCenter());
+        if (eh.rotate) eh.rotate.setLatLng(rotHandlePos());
+      });
+
+      m.on('dragend', () => {
+        // Leaflet ha spostato il marker alla posizione del mouse durante il drag,
+        // ma il corner reale è sul punto proiettato: riallineiamo.
+        _startCorners = null;
+        updateHandlePositions();
+        pushHistory();
+        saveToLocalStorage();
+      });
+
+    } else {
+      // ── Modalità DEFORMA: ogni angolo si muove liberamente ──
+      m.on('drag', e => {
+        const cur = getOverlayCorners();
+        cur[i] = e.latlng;
+        setOverlayCorners(cur);
+        eh.corners.forEach((hm, j) => { if (j !== i && hm) hm.setLatLng(getOverlayCorners()[j]); });
+        if (eh.center) eh.center.setLatLng(overlayCenter());
+        if (eh.rotate) eh.rotate.setLatLng(rotHandlePos());
+      });
+      m.on('dragend', () => { pushHistory(); saveToLocalStorage(); });
+    }
+
     eh.corners[i] = m;
   });
 
@@ -361,7 +498,7 @@ function showEditHandles() {
     eh.corners.forEach((hm, i) => { if (hm) hm.setLatLng(nc[i]); });
     if (eh.rotate) eh.rotate.setLatLng(rotHandlePos());
   });
-  cm.on('dragend', saveToLocalStorage);
+  cm.on('dragend', () => { pushHistory(); saveToLocalStorage(); });
   eh.center = cm;
 
   // ── Rotation handle ──────────────────────────────────────────────────
@@ -407,10 +544,34 @@ function showEditHandles() {
   rm.on('dragend', () => {
     rotStartAngle = rotStartCorners = rotStartCenter = null;
     rm.setLatLng(rotHandlePos());
+    pushHistory();
     saveToLocalStorage();
   });
   eh.rotate = rm;
 }
+
+// Attacca il click sull'overlay per alternare modalità scala ↔ deforma.
+// Usa map.on('click') + geoToPixel perché DistortableImage disabilita pointer-events
+// sull'elemento <img>, rendendo inaffidabile state.overlay.on('click').
+function attachOverlayClickToggle() { /* no-op: handled by map click below */ }
+
+// Guard: evita toggle accidentale dopo drag (Leaflet emette click alla fine dei drag)
+let _overlayDragging = false;
+map.on('dragstart', () => { _overlayDragging = true; });
+map.on('dragend',   () => { setTimeout(() => { _overlayDragging = false; }, 50); });
+
+map.on('click', e => {
+  if (_overlayDragging) return;
+  if (state.mode !== 'pan' || !state.overlay || state.overlayLocked) return;
+  const hit = geoToPixel(e.latlng.lat, e.latlng.lng);
+  if (!hit.valid) return;
+  overlayHandleMode = (overlayHandleMode === 'scale') ? 'distort' : 'scale';
+  hideEditHandles();
+  showEditHandles();
+  setStatus(overlayHandleMode === 'scale'
+    ? 'Modalità SCALA — trascina gli angoli per ridimensionare proporzionalmente. Clicca l\'immagine per passare alla deformazione.'
+    : 'Modalità DEFORMA — trascina gli angoli liberamente per distorcere. Clicca l\'immagine per tornare alla scala.');
+});
 
 function updateHandlePositions() {
   const c = getOverlayCorners();
@@ -1423,7 +1584,9 @@ function restoreProject(data) {
   (data.gcps || []).forEach(g => addGcp(g.lat, g.lng, g.px, g.py));
 
   if (corners.length >= 2) map.fitBounds(L.latLngBounds(corners), { padding: [40, 40] });
-  setTimeout(showEditHandles, 150);
+  overlayHandleMode = 'scale';
+  clearHistory();
+  setTimeout(() => { showEditHandles(); attachOverlayClickToggle(); pushHistory(); }, 150);
   showPosPanel(true);
   updateExportButtons();
   setStatus('Progetto caricato da file JSON.');
@@ -1652,7 +1815,7 @@ document.getElementById('btn-apply-gcp').addEventListener('click', () => {
   hideEditHandles();
   setOverlayCorners(newCorners);
   map.fitBounds(L.latLngBounds(newCorners), { padding: [40, 40], maxZoom: 16 });
-  setTimeout(showEditHandles, 100);
+  setTimeout(() => { showEditHandles(); pushHistory(); }, 100);
   saveToLocalStorage();
   setStatus('Immagine allineata alle coordinate dei GCP.');
 });
@@ -1666,7 +1829,7 @@ document.getElementById('btn-reset-overlay').addEventListener('click', () => {
   hideEditHandles();
   setOverlayCorners(orig);
   map.fitBounds(L.latLngBounds(orig), { padding: [30, 30], maxZoom: 16 });
-  setTimeout(showEditHandles, 100);
+  setTimeout(() => { showEditHandles(); pushHistory(); }, 100);
   saveToLocalStorage();
   setStatus('Overlay riportato alla posizione originale.');
 });

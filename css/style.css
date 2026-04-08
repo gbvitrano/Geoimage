@@ -430,14 +430,29 @@ select:focus { outline: none; border-color: var(--primary-color); }
 }
 
 /* ── Interactive overlay handles ─────────────────────────────────── */
-.eh-corner {
-  width: 13px; height: 13px;
+
+/* Scale mode: white square with diagonal arrow, orange border */
+.eh-corner-scale {
+  width: 17px; height: 17px;
   background: var(--white);
   border: 2px solid var(--primary-color);
-  border-radius: 3px;
-  box-shadow: 0 1px 5px rgba(0,0,0,.3);
-  cursor: nwse-resize;
+  border-radius: 2px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary-color);
+  font-size: 9px;
 }
+
+/* Distort mode: blue diamond (square rotated 45°) */
+.eh-corner-distort {
+  width: 13px; height: 13px;
+  background: var(--white);
+  border: 2px solid #3b82f6;
+  border-radius: 1px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.35);
+  transform: rotate(45deg);
+}
+
 .eh-center {
   width: 28px; height: 28px;
   background: rgba(255,153,0,.85);

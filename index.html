@@ -55,6 +55,11 @@
   <button class="btn"        id="btn-gcp"    title="Aggiungi GCP (G)"><i class="fa-solid fa-location-dot"></i> GCP</button>
   <button class="btn danger" id="btn-clear"  title="Rimuovi tutti i GCP"><i class="fa-solid fa-trash"></i> GCP</button>
   <div class="sep"></div>
+  <button class="btn" id="btn-undo10" title="Annulla 10 passi (Ctrl+Shift+Z)" disabled><i class="fa-solid fa-rotate-left"></i><small>10</small></button>
+  <button class="btn" id="btn-undo"  title="Annulla (Ctrl+Z)" disabled><i class="fa-solid fa-rotate-left"></i></button>
+  <button class="btn" id="btn-redo"  title="Ripeti (Ctrl+Y)" disabled><i class="fa-solid fa-rotate-right"></i></button>
+  <button class="btn" id="btn-redo10" title="Ripeti 10 passi (Ctrl+Shift+Y)" disabled><i class="fa-solid fa-rotate-right"></i><small>10</small></button>
+  <div class="sep"></div>
   <div class="slider-row">
     <label>Opacità</label>
     <input type="range" id="opacity-slider" min="0" max="100" value="70">
@@ -366,11 +371,17 @@
             <strong><i class="fa-solid fa-up-down-left-right"></i> Posiziona e orienta l'immagine</strong>
             <p>Usa le maniglie interattive direttamente sulla mappa:</p>
             <ul>
-              <li><strong>Cerchio blu <i class="fa-solid fa-up-down-left-right"></i></strong> — trascina per spostare l'intera immagine</li>
-              <li><strong>Quadratini bianchi agli angoli</strong> — trascina per ridimensionare o distorcere</li>
-              <li><strong>Cerchio arancione <i class="fa-solid fa-rotate-right"></i></strong> — trascina per ruotare</li>
+              <li><strong>Cerchio arancione <i class="fa-solid fa-up-down-left-right"></i></strong> al centro — trascina per spostare l'intera immagine</li>
+              <li><strong>Cerchio arancione <i class="fa-solid fa-rotate-right"></i></strong> in alto — trascina per ruotare</li>
+              <li><strong>Maniglie agli angoli</strong> — cambiano modalità ad ogni clic sull'immagine (come in CorelDraw):
+                <ul style="margin-top:5px">
+                  <li><strong>1° clic — Modalità SCALA <i class="fa-solid fa-arrows-left-right" style="transform:rotate(-45deg);display:inline-block"></i></strong>: gli angoli mostrano frecce diagonali arancioni. Trascina per ridimensionare l'immagine <em>proporzionalmente</em> senza distorcerla, scalando dall'angolo opposto.</li>
+                  <li><strong>2° clic — Modalità DEFORMA <span style="display:inline-block;width:9px;height:9px;border:2px solid #3b82f6;transform:rotate(45deg);vertical-align:middle"></span></strong>: gli angoli diventano diamanti blu. Trascina ogni angolo <em>liberamente</em> per deformare e distorcere l'immagine (utile per adattare mappe storiche non rettangolari).</li>
+                </ul>
+              </li>
             </ul>
-            <p>Puoi anche usare i pulsanti del pannello <em>Posiziona overlay</em> per spostamenti, rotazioni e scala precisi.</p>
+            <p>Puoi anche usare i pulsanti del pannello <em>Posiziona overlay</em> per spostamenti, rotazioni e scala precisi (±10%).</p>
+            <p>I pulsanti <strong><i class="fa-solid fa-rotate-left"></i> Annulla</strong> e <strong><i class="fa-solid fa-rotate-right"></i> Ripeti</strong> nella toolbar (oppure <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>) ti permettono di tornare indietro o avanzare di un passo alla volta nella cronologia delle posizioni (fino a 50 passi). La cronologia si azzera quando carichi una nuova immagine.</p>
           </div>
         </li>
         <li>
@@ -485,7 +496,9 @@
       <ul>
         <li><kbd>G</kbd> — attiva modalità GCP &nbsp;|&nbsp; <kbd>Esc</kbd> — annulla clic 1 in attesa, o torna alla navigazione</li>
         <li><kbd>Canc</kbd> / <kbd>Backspace</kbd> — rimuove l'ultimo GCP aggiunto</li>
+        <li><kbd>Ctrl+Z</kbd> — annulla l'ultima operazione sull'overlay &nbsp;|&nbsp; <kbd>Ctrl+Y</kbd> / <kbd>Ctrl+Shift+Z</kbd> — ripristina</li>
         <li><kbd>Ctrl+S</kbd> — salva il progetto in localStorage</li>
+        <li><strong>Clic sull'immagine</strong> — alterna le maniglie angolari tra modalità <strong>Scala</strong> (frecce diagonali arancioni, ridimensionamento proporzionale) e modalità <strong>Deforma</strong> (diamanti blu, deformazione libera).</li>
         <li>Il progetto viene <strong>salvato automaticamente</strong> nel browser: ricaricando la pagina trovi tutto dove l'hai lasciato.</li>
         <li>Ogni GCP richiede <strong>due clic sulla mappa</strong>: prima sull'immagine storica (pixel), poi sul punto reale nella cartografia di base (coordinate geografiche).</li>
         <li>Usa <strong>Swipe</strong> o <strong>Spotlight</strong> durante l'inserimento GCP per vedere la mappa di base e cliccare con precisione al secondo clic.</li>
